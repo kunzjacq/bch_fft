@@ -3,6 +3,8 @@
 #include "finite_field.h"
 #include "gf2_extension_polynomials.h"
 
+// wrapper around one of the two functions below
+// buffers must be distinct ; source buffer is modified
 void evaluate_polynomial_additive_FFT(
     TfiniteField* p_f,
     uint32_t* p_poly,

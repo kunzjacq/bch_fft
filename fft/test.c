@@ -135,15 +135,11 @@ int additive_dft_test(uint32_t* p_buffers)
     printf("time of full DFT: %.2f sec.\n", t1);
     printf("Doing additive DFT...\n");
     t2 = absolute_time();
-    for(i = 0 ; i < repeat; i++) {
+    for(i = 0 ; i < repeat; i++)
+    {
       memcpy(buffer1, refIn, f.n * 4);
-#if 0
-      additive_DFT(&f, buffer1, max_degree);
-#else
-      additive_DFT_opt(&f, buffer1, max_degree);
-#endif
+      evaluate_polynomial_additive_FFT(&f, buffer1, buffer2, max_degree);
     }
-    for (i = 0; i < mult_order; i++) buffer2[i] = buffer1[f.exp[i]];
     t2 = absolute_time() - t2;
     printf("time of additive DFT: %.2f sec.\n", t2);
     printf("speed ratio : %.2f\n", t1/t2);
@@ -223,7 +219,6 @@ int partial_dft_one_test(TfiniteField *f,  uint32_t* p_buffers, uint32_t numCoef
   for (i = 0; i < numCoeffs; i++)
   {
     refIn[i] = ((unsigned int) rand()) & mult_order;
-    //refIn[i] = i & mult_order;
   }
   printf("Polynomial degree: %d\n", numCoeffs - 1);
   uint32_t repeat = f->n <= (1u<<20) ?  (1u<<20) / f->n : 1;
@@ -237,7 +232,7 @@ int partial_dft_one_test(TfiniteField *f,  uint32_t* p_buffers, uint32_t numCoef
   t1 = absolute_time() - t1;
   printf("time of full DFT: %.2f sec.\n", t1);
 
-  printf("Calling evaluatePolynomial, which uses partial DFTs...\n");
+  printf("Computing a partial DFT with evaluate_polynomial_multiplicative_FFT()...\n");
   t2 = absolute_time();
   for(i = 0 ; i < repeat; i++)
   {

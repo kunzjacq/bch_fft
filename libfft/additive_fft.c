@@ -7,13 +7,11 @@
 #include "utils.h"
 
 // #define MEASURE_TIME
-// #define _DEBUG
+// #define _CHECK_COMPUTATIONS
 
-// wrapper around one of the two functions below
-// buffers must be distinct ; source buffer is modified
 void evaluate_polynomial_additive_FFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t* po_result, uint32_t p_num_terms)
 {
-#if 1
+#if 0
   additive_DFT_opt(p_f, p_poly, p_num_terms);
 #else
   additive_DFT(p_f, p_poly, p_num_terms);
@@ -239,12 +237,15 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
     printf("Polynomial computation time (could be precomputed): %lf\n", t);
 #endif
 
-#ifdef _DEBUG
+#ifdef _CHECK_COMPUTATIONS
   uint32_t* l_values1 = (uint32_t*) calloc(p_f->n, sizeof(uint32_t));
   uint32_t* l_values2 = (uint32_t*) calloc(p_f->n, sizeof(uint32_t));
   uint32_t* l_values3 = (uint32_t*) calloc(p_f->n, sizeof(uint32_t));
   printf("P_0: \n");
-  evaluateSparseFF(p_f, l_div, l_degrees, 2, l_values1, 0, p_f->n);
+  for(k = 0; k < p_f->n; k++)
+  {
+    l_values1[k] = evaluate_sparse_polynomial(p_f, l_div, l_degrees, 2, k);
+  }
   int ok = 1;
   if(l_values1[0] != 0) ok = 0;
   for(k = 1; k < (1u << m); k++) if(l_values1[k] == 0) ok = 0;
@@ -272,7 +273,10 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
     uint32_t* t = l_values2;
     l_values2 = l_values1;
     l_values1 = t;
-    evaluateSparseFF(p_f, l_div+(m+1)*i, l_degrees, i+2, l_values1, 0, p_f->n);
+    for(k = 0; k < p_f->n; k++)
+    {
+      l_values1[k] = evaluate_sparse_polynomial(p_f,  l_div + (m + 1) * i, l_degrees, i + 2, k);
+    }
 
     for(k = 0; k < (1u << m); k++)
     {
@@ -285,13 +289,12 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
     }
     if(ok)
     {
-      printf("ok: P_%d = P_%d(X) x P_%d(X-x_%d)\n", i, i-1,i-1,i-1);
+      printf("ok: P_%d = P_%d(X) x P_%d(X-x_%d)\n", i, i - 1, i - 1, i - 1);
     }
     else
     {
-      printf("nok: P_%d != P_%d(X) x P_%d(X-x_%d) (%d discrepancies)\n", i, i-1,i-1,i-1, disc);
+      printf("nok: P_%d != P_%d(X) x P_%d(X-x_%d) (%d discrepancies)\n", i, i - 1, i - 1, i - 1, disc);
     }
-
 
     for(k = 0; k < (1u << i); k++) if(l_values1[k] != 0)
     {
@@ -320,15 +323,15 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
 #endif
     const uint32_t o  = 1 << (m - i);
     const uint32_t ho = 1 << (m - i - 1);
-    //reductor = P_(m-1-i)
+    //reductor = P_(m - 1 - i)
     uint32_t* l_reductorCoeffs = l_div + (m + 1) * (m - 1 - i);
     // v = reductor(ho)
     const uint32_t l_reducteeDegree = p_poly_degree < o - 1 ? p_poly_degree : o - 1;
     const uint32_t l_reductorDegree = l_degrees[m - i];
     const uint32_t log_v =
-        log[evaluate_sparse_polynomial(
-          p_f, l_reductorCoeffs, l_degrees, m - i + 1, ho)];
-    // shortcut for small degree input polynomials
+        log[evaluate_sparse_polynomial(p_f, l_reductorCoeffs, l_degrees, m - i + 1, ho)];
+    // shortcut for small degree input polynomials:
+    // if polynomial degree is smaller than reductor degree, no reduction occurs
     if(p_poly_degree > 0 && p_poly_degree < l_reductorDegree)
     {
       for(j = 0; j < (1u << i); j++)
@@ -353,12 +356,6 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
               p_f, poly_ij, l_reducteeDegree, l_reductorCoeffs, l_degrees,
               m - i + 1, l_buf, l_buf + ho, log_v);
 
-#ifdef _DEBUG
-        int ok = checkEuclideanDivisionSparseFF(
-              p_f, poly_ij, (1 << (m-i)) - 1, l_reductorCoeffs, l_degrees,
-              m - i + 1, l_buf, l_buf + ho, ho - 1, log_v);
-        if (!ok) printf("EuclideanDivisionSparseFF failed\n");
-#endif
         for(k = 0; k < ho; k++)
         {
           poly_ij[k]      = l_buf[k];                   // r
@@ -370,35 +367,8 @@ void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree)
     t = absolute_time() - t;
     printf("Step %d time: %lf sec\n", i, t);
 #endif
-
-#ifdef _DEBUG
-    if(m <= 8) // for large fields, the code below is extremely slow
-    {
-      for(j = 0; j < (1 << (i+1)); j++)
-      {
-        uint32_t* poly_ij = p_poly + j * ho;
-        evaluateFF(p_f, poly_ij, ho, l_values1, j * ho, (j + 1) * ho);
-      }
-      if(i == 0)
-      {
-        memcpy(l_values3, l_values1, (1 << m) * 4);
-      }
-      else
-      {
-        if(memcmp(l_values1, l_values3, (1 << m) * 4))
-        {
-          printf("nok: the reduced polynomials evaluations differ between steps %u and %u\n", i-1, i);
-        }
-        else
-        {
-          printf("ok: the reduced polynomials evaluations are the same in steps %u and %u\n", i-1, i);
-        }
-        fflush(stdout);
-      }
-    }
-#endif
   }
-#ifdef _DEBUG
+#ifdef _CHECK_COMPUTATIONS
   free(l_values3);
   free(l_values2);
   free(l_values1);
