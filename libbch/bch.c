@@ -402,6 +402,18 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
   uint32_t* syndrome = p_buffer->m_syndrome;
   uint32_t* result_buffer = p_buffer->m_A;
   uint32_t* aux_buffer = p_buffer->m_buffer;
+
+  // ELP can be in p_buffer->m_A or p_buffer->m_C
+  // put it in p_buffer->m_C in order to avoid an overlap with result_buffer
+  // fixme : maybe this should be done at the end of berlekamp-massey
+  if(p_buffer->m_elp == p_buffer->m_A)
+  {
+    for(uint32_t i = 0; i < p_elp_degree + 1; i++)
+    {
+      p_buffer->m_C[i] = p_buffer->m_A[i];
+    }
+    p_buffer->m_elp = p_buffer->m_C;
+  }
   uint32_t* elp = p_buffer->m_elp;
 
   //check if the degree of the elp is big enough to use the fft
@@ -470,7 +482,7 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
     {
       uint32_t errorIdx = order - i;
       //if(errorIdx < p_codePtr->m_length)
-        p_buffer->m_error[count++] = errorIdx;
+      p_buffer->m_error[count++] = errorIdx;
     }
   }
   return count;
