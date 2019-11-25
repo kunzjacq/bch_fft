@@ -49,6 +49,34 @@ TfiniteField create_binary_finite_field(uint32_t p_degree);
 
 void free_finite_field(TfiniteField * p_f);
 
+
+/**
+ * @brief inverse
+ * returns 1/a if a is nozero, 0 otherwise
+ * @param p_f
+ * the finite field used.
+ * @param p_a
+ * value of a
+ * @return
+ * 1 / a
+ */
+
+uint32_t inverse(TfiniteField * p_f, uint32_t p_a);
+
+
+/**
+ * @brief square
+ * squares a.
+ * @param p_f
+ * the finite field used.
+ * @param p_a
+ * value of a
+ * @return
+ * a * a
+ */
+
+uint32_t square(TfiniteField * p_f, uint32_t p_a);
+
 /**
  * @brief multiply
  * multiplies a by b.

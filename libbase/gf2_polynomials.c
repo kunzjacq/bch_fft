@@ -2,8 +2,6 @@
 #include <string.h> // for memset / memcpy
 #include <assert.h>
 
-#include "gf2x.h"
-
 #include "gf2_polynomials_misc.h"
 #include "gf2_polynomials.h"
 

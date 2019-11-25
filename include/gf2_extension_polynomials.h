@@ -19,7 +19,7 @@ extern "C"
  * monomial coefficients.
  * @param p_degrees
  * monomial degrees.
- * @param p_num_coeffs
+ * @param p_num_monomials
  * number of monomials.
  * @param p_y
  * point where the polynomial is evaluated.
@@ -28,6 +28,32 @@ extern "C"
  */
 
 uint32_t evaluate_sparse_polynomial(
+    TfiniteField* p_f,
+    uint32_t* p_coeffs,
+    uint32_t* p_degrees,
+    uint32_t p_num_monomials,
+    uint32_t p_y);
+
+/**
+ * @brief evaluate_sparse_polynomial_ref
+ * evaluates a sparse polynomial at one point.
+ * same as evaluate_sparse_polynomial, but does not use any log or exp table.
+ *
+ * @param p_f
+ * finite field definition
+ * @param p_coeffs
+ * monomial coefficients.
+ * @param p_degrees
+ * monomial degrees.
+ * @param p_num_monomials
+ * number of monomials.
+ * @param p_y
+ * point where the polynomial is evaluated.
+ * @return
+ * the value of the polynomial.
+ */
+
+uint32_t evaluate_sparse_polynomial_ref(
     TfiniteField* p_f,
     uint32_t* p_coeffs,
     uint32_t* p_degrees,
@@ -113,6 +139,42 @@ void euclidean_division_sparse_reductor(
     uint32_t* po_remainder,
     uint32_t* po_dividend,
     uint32_t p_dividend_factor_log);
+
+/**
+ * @brief euclidean_division_sparse_reductor_ref
+ * euclidean division of a dense polynomial by a sparse polynomial in a binary field.
+ * same as euclidean_division_sparse_reductor, but does not use log or exp computation in finite field.
+ * @param p_f
+ * finite field description
+ * @param p_reductee
+ * coefficients of polynomial to reduce.
+ * @param p_reductee_degree
+ * degree of polynomial to reduce.
+ * @param p_reductor_coeffs
+ * reductor monomial coefficients
+ * @param p_reductor_degrees
+ * reductor monomial degrees
+ * @param p_reductor_num_terms
+ * number of terms in reductor.
+ * @param po_remainder
+ * output array for remainder, of size (reductor degree).
+ * @param po_dividend
+ * output array for dividend, or 0. The dividend is written if po_dividend != 0.
+ * if this array is nonzero, it must be of size p_reductee_degree - (reductor degree) + 1.
+ * @param p_dividend_factor
+ * the dividend is multiplied by this value in po_dividend.
+ */
+
+void euclidean_division_sparse_reductor_ref(
+    TfiniteField* p_f,
+    const uint32_t *p_reductee,
+    uint32_t p_reductee_degree,
+    uint32_t* p_reductor_coeffs,
+    uint32_t* p_reductor_degrees,
+    uint32_t p_reductor_num_terms,
+    uint32_t* po_remainder,
+    uint32_t* po_dividend,
+    uint32_t p_dividend_factor);
 
 #ifdef __cplusplus
 }

@@ -56,6 +56,24 @@ void free_finite_field(TfiniteField * p_f)
   p_f->log = 0;
 }
 
+uint32_t inverse(TfiniteField * p_f, uint32_t p_a)
+{
+  uint32_t order = p_f->n - 1;
+  if (p_a == 0) return 0;
+  if (p_a == 1) return 1;
+  uint32_t loginv = order - p_f->log[p_a];
+  return p_f->exp[loginv];
+}
+
+uint32_t square(TfiniteField * p_f, uint32_t p_a)
+{
+  uint32_t order = p_f->n - 1;
+  if (p_a == 0)  return 0;
+  uint32_t logsq = 2 * p_f->log[p_a];
+  if (logsq >= order) logsq -= order;
+  return p_f->exp[logsq];
+}
+
 uint32_t multiply(TfiniteField * p_f, uint32_t p_a, uint32_t p_b)
 {
   uint32_t order = p_f->n - 1;

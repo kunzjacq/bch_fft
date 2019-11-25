@@ -51,3 +51,5 @@ void additive_DFT_opt(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degre
  */
 
 void additive_DFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree);
+
+void additive_DFT_ref(TfiniteField* p_f, uint32_t* p_poly, uint32_t p_poly_degree);
