@@ -32,9 +32,7 @@ typedef struct _TbchCodeBuffer
   // other buffers have size p_codePtr->m_distance + 1.
   uint32_t* m_A;
   uint32_t* m_B;
-  uint32_t* m_C;
-  // initially, m_elp = m_C. It is changed to m_A or m_B during berlekamp-massey to track the
-  // location of the elp.
+  // pointer to the error location polynomial.
   uint32_t* m_elp;
   // buffer storing location of errors.
   uint32_t* m_error;

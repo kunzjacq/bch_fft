@@ -9,15 +9,15 @@
 
 #define BUFFER_LENGTH 512
 
-// FIXME: on input 256 110 110, the code should fail to create the code, but it appears to succeed
-// then it fails to properly decode the input values
-
 __attribute__((__noreturn__)) void usage(char* argv[]);
 int test_c(unsigned int p_length, unsigned int p_t, unsigned int p_numerr);
 
 int main(int argc, char* argv[])
 {
   unsigned int length, t, numerr;
+
+  // ignore first argument
+  // argc--; argv++;
 
   if (argc != 4) usage(argv);
   else
@@ -61,14 +61,14 @@ int test_c(unsigned int p_length, unsigned int p_t, unsigned int p_numerr)
   generationTime = absolute_time();
   code = bch_gen_code(p_length, d);
   generationTime = absolute_time() - generationTime;
-  printf("Created a BCH code with block size %d able to correct %d errors\n", code.m_length , p_t);
-
   if (code.m_packed_gen_poly == NULL)
   {
     printf("Code could not be created: codeword too small given the requested error-correcting "
         "capability");
     exit(2);
   }
+  printf("Created a BCH code\n with block size %d\n with %d redundancy bits\n able to correct %d errors\n",
+         code.m_length , code.m_gen_poly_degree, p_t);
   // generate random data
   seed = 1;
   srand(seed);

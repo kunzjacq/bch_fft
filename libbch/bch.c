@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 
 #include "gf2x.h"
 
@@ -30,6 +31,8 @@ TbchCode bch_gen_code(uint32_t p_codeword_size, uint32_t p_minimum_distance)
   TbchCode code;
   code.m_distance = 0;
   code.m_packed_gen_poly = NULL;
+  code.m_length = 0;
+  code.m_gen_poly_degree = 0;
   if((p_minimum_distance >= p_codeword_size) || p_codeword_size > (1u << g_maxDegree)) return code;
 
   uint32_t degree = 2;
@@ -326,7 +329,7 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
   uint32_t* syndrome = p_buffer->m_syndrome;
   uint32_t* A = p_buffer->m_A;
   uint32_t* B = p_buffer->m_B;
-  uint32_t* C = p_buffer->m_C;
+  uint32_t* C = p_buffer->m_elp;
 
   uint32_t Adegree = 0, Cdegree = 0, Bdegree = 0;
   B[0] = 1;
@@ -388,8 +391,15 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
       Cdegree = Adegree;
     }
   }
-  // remember ELP location
-  p_buffer->m_elp = C;
+  // ELP is in C, which may be p_buffer->m_A, p_buffer->m_B or p_buffer->m_elp
+  // put it in p_buffer->m_elp
+  if(C != p_buffer->m_elp)
+  {
+    for(uint32_t i = 0; i < L + 1; i++)
+    {
+      p_buffer->m_elp[i] = C[i];
+    }
+  }
   return L;
 }
 
@@ -397,41 +407,32 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
 {
   TfiniteField* f = &p_code->m_field;
   uint32_t order = f->n - 1;
-  const uint32_t* log = f->log;
-  const uint32_t* exp = f->exp;
+  const uint32_t* log_t = f->log;
+  const uint32_t* exp_t = f->exp;
   uint32_t* syndrome = p_buffer->m_syndrome;
   uint32_t* result_buffer = p_buffer->m_A;
   uint32_t* aux_buffer = p_buffer->m_buffer;
-
-  // ELP can be in p_buffer->m_A or p_buffer->m_C
-  // put it in p_buffer->m_C in order to avoid an overlap with result_buffer
-  // fixme : maybe this should be done at the end of berlekamp-massey
-  if(p_buffer->m_elp == p_buffer->m_A)
-  {
-    for(uint32_t i = 0; i < p_elp_degree + 1; i++)
-    {
-      p_buffer->m_C[i] = p_buffer->m_A[i];
-    }
-    p_buffer->m_elp = p_buffer->m_C;
-  }
   uint32_t* elp = p_buffer->m_elp;
 
   //check if the degree of the elp is big enough to use the fft
 #ifdef LOGGING
   printf("  Degree of error locator polynomial: %d\n", p_elp_degree);
 #endif
-  // 1.0 constant empirically chosen to equalize Chien search and FFT running times at threshold
-  // the constant is different than for the syndrome computation case because here the polynomial
+  // constants below empirically chosen to equalize Chien search and FFT running times at threshold
+  // the constants are different than in the syndrome computation case because here the polynomial
   // is in GF(2^m), whereas for the syndrome it is on GF(2). This does not change the FFT
   // computation time (always done in GF(2^m)), but does change the Chien search computation time.
 
-  // FIXME take into account additive FFT complexity which is different than the expression below
-  float FFTThreshold = (float) (getFactorSum(f));
+#ifndef USE_ADDITIVE_DFT
+  float FFT_threshold = 0.8f * (float) (getFactorSum(f));
+#else
+  float FFT_threshold = 3.5f * f->m * log((float) f->m);
+#endif
 #ifdef LOGGING
-  printf("  Error location: has degree %d, FFT threshold: %.0f\n", p_elp_degree, (double) FFTThreshold);
+  printf("  Error location: has degree %d, FFT threshold: %.0f\n", p_elp_degree, (double) FFT_threshold);
 #endif
 
-  int use_fft = 0;//p_degree > FFTThreshold
+  int use_fft = p_elp_degree > FFT_threshold;
 
   if (use_fft)
   {
@@ -441,10 +442,10 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
     {
       uint32_t i;
       for (i = 0; i < p_elp_degree + 1; i++) syndrome[i] = elp[i];
-      for (     ; i < order       ; i++) syndrome[i] = 0;
+      for (     ; i < order           ; i++) syndrome[i] = 0;
     }
 #ifndef USE_ADDITIVE_DFT
-    evaluate_polynomial_multiplicative_FFT(f, syndrome, result_buffer, p_degree + 1, aux_buffer);
+    evaluate_polynomial_multiplicative_FFT(f, syndrome, result_buffer, p_elp_degree + 1, aux_buffer);
 #else
     evaluate_polynomial_additive_FFT(f, syndrome, result_buffer, p_elp_degree + 1);
 #endif
@@ -455,7 +456,7 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
     printf("  Using Chien search to find roots of ELP\n");
 #endif
     // put elp into logarithm form
-    for (uint32_t j = 0; j < p_elp_degree + 1; j++) aux_buffer[j] = log[elp[j]];
+    for (uint32_t j = 0; j < p_elp_degree + 1; j++) aux_buffer[j] = log_t[elp[j]];
     for (uint32_t i = 0; i < order; i++)
     {
       // evaluate ELP on x**i
@@ -465,7 +466,7 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
         uint32_t log_coeff = aux_buffer[j];
         if (log_coeff != f->logzero)
         {
-          v ^= exp[log_coeff];
+          v ^= exp_t[log_coeff];
           log_coeff += j;
           if(log_coeff >= order) log_coeff -= order;
           aux_buffer[j] = log_coeff;
@@ -572,17 +573,16 @@ TbchCodeBuffer bch_alloc_buffers(TbchCode* p_code)
   buffer.m_A = (uint32_t*) malloc(p_code->m_field.n * 4);
   //buffer.m_A = (uint32_t*) malloc(byteSize);
   buffer.m_B = (uint32_t*) malloc(byteSize);
-  buffer.m_C = (uint32_t*) malloc(byteSize);
+  buffer.m_elp = (uint32_t*) malloc(byteSize);
   //tracks the location of the ELP accross buffer swaps during Berlekamp-Massey
-  buffer.m_elp = buffer.m_C;
   buffer.m_error = (uint32_t*) malloc(byteSize);
   return buffer;
 }
 
 void bch_free_buffers(TbchCodeBuffer* p_buffer)
 {
-  free(p_buffer->m_C);
-  p_buffer->m_C = 0;
+  free(p_buffer->m_elp);
+  p_buffer->m_elp = 0;
   free(p_buffer->m_A);
   p_buffer->m_A = 0;
   free(p_buffer->m_B);
