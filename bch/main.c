@@ -97,7 +97,7 @@ int test_c(unsigned int p_length, unsigned int p_t, unsigned int p_numerr)
   printf("Decoding...\n");
   int32_t syn_error;
   uint32_t deg;
-  TbchCodeBuffer buffer = bch_alloc_buffers(&code);
+  TbchCodeBuffers buffer = bch_alloc_buffers(&code);
   printf(" Computing syndromes...\n");
   syndromeComputationTime = absolute_time();
   syn_error = bch_eval_syndrome(&code, &buffer, encodedData);
