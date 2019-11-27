@@ -243,7 +243,7 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffers* p_buffer, unsigned 
 #endif
   float cost =
       ((float) p_code->m_distance) *
-      ((float) p_code->m_gen_poly_degree) / ((float) p_code->m_length);
+      ((float) p_code->m_gen_poly_degree) / ((float) f->n);
 #ifdef LOGGING
   printf("  Syndrome computation: must evaluate polynomial of degree %d at %d points; "
          "cost: %.0f; FFT threshold: %.0f\n", p_code->m_gen_poly_degree,
