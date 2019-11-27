@@ -20,23 +20,20 @@ typedef struct _TbchCode
   uint32_t m_length;
 } TbchCode;
 
-// a type for a buffer for BCH decoding
-typedef struct _TbchCodeBuffer
+// a type for buffers for BCH decoding
+typedef struct _TbchCodeBuffers
 {
-  // buffer of size p_codePtr->m_field.n
+  // buffers of size p_codePtr->m_field.n
   uint32_t* m_syndrome;
-  // buffer of size p_codePtr->m_field.n
-  uint32_t* m_buffer;
-  // buffers for polynomials used by berlekamp-massey algorithm.
-  // m_A has size p_codePtr->m_field.n, to serve other buffering purposes outside of B-M.
-  // other buffers have size p_codePtr->m_distance + 1.
+  uint32_t* m_buffer_1;
+  uint32_t* m_buffer_2;
+  // buffers for polynomials used by berlekamp-massey algorithm, of size p_codePtr->m_distance + 1.
   uint32_t* m_A;
   uint32_t* m_B;
-  // pointer to the error location polynomial.
-  uint32_t* m_elp;
-  // buffer storing location of errors.
+  uint32_t* m_C_elp; // pointer to the error location polynomial.
+  // buffer storing the location of errors.
   uint32_t* m_error;
-} TbchCodeBuffer;
+} TbchCodeBuffers;
 
 /**
  * @brief bch_gen_code
@@ -124,7 +121,7 @@ void bch_reduce_syndrome(TbchCode *p_code, unsigned long* pio_encoded_data);
  * 1 if there are errors to correct, 0 otherwise.
  */
 
-int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer *p_buffer, unsigned long* p_packed_syndrome);
+int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffers *p_buffer, unsigned long* p_packed_syndrome);
 
 /**
  * @brief bch_compute_elp
@@ -137,7 +134,7 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer *p_buffer, unsigned l
  * (which points to one of the buffers p_buffer->m_{A,B,C})
  */
 
-uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer);
+uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffers* p_buffer);
 
 /**
  * @brief bch_locate_errors
@@ -154,7 +151,7 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer);
  * the number of roots found.
  */
 
-uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer *p_buffer, uint32_t p_elp_degree);
+uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffers *p_buffer, uint32_t p_elp_degree);
 
 /**
  * @brief bch_decode
@@ -171,7 +168,7 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer *p_buffer, uint32_t 
  */
 
 uint32_t bch_decode(TbchCode* p_code, unsigned long* pio_packed_data,
-    TbchCodeBuffer* p_buffer, uint32_t *po_corrected);
+    TbchCodeBuffers* p_buffer, uint32_t *po_corrected);
 
 /**
  * @brief bch_encode
@@ -209,9 +206,9 @@ int bch_encode(TbchCode *p_code, unsigned long* po_codeword, uint32_t* p_data, u
 void bch_find_best_offset(TfiniteField* p_f, uint32_t p_minimum_distance);
 
 // misc memory management functions
-TbchCodeBuffer bch_alloc_buffers(TbchCode* p_code);
+TbchCodeBuffers bch_alloc_buffers(TbchCode* p_code);
 void bch_free_code(TbchCode *p_code);
-void bch_free_buffers(TbchCodeBuffer* p_buffer);
+void bch_free_buffers(TbchCodeBuffers* p_buffer);
 
 #ifdef	__cplusplus
 }

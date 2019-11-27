@@ -9,9 +9,10 @@
 // #define MEASURE_TIME
 // #define _CHECK_COMPUTATIONS
 
+// po_result needs to be distinct from p_poly for evaluate_polynomial_additive_FFT to work
 void evaluate_polynomial_additive_FFT(TfiniteField* p_f, uint32_t* p_poly, uint32_t* po_result, uint32_t p_num_terms)
 {
-#if 0
+#if 1
   additive_DFT_opt(p_f, p_poly, p_num_terms);
 #else
   additive_DFT_ref(p_f, p_poly, p_num_terms);

@@ -20,6 +20,7 @@ static const uint32_t sUL = sizeof(unsigned long);
 
 #define LOGGING
 #define USE_ADDITIVE_DFT
+#define USE_ADDITIVE_DFT_SYN
 
 void multiply_polynomial_by_monomial(
     TfiniteField* p_f,
@@ -224,7 +225,7 @@ void bch_reduce_syndrome(TbchCode *p_code, unsigned long* pio_encoded_data)
       p_code->m_packed_gen_poly, p_code->m_gen_poly_degree, 0);
 }
 
-int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer* p_buffer, unsigned long* p_packed_syndrome)
+int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffers* p_buffer, unsigned long* p_packed_syndrome)
 {
   uint32_t i, j;
   int32_t syn_error = 0;
@@ -232,22 +233,25 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer* p_buffer, unsigned l
   const uint32_t* exp = f->exp;
   const uint32_t order = f->n - 1;
   uint32_t* syndrome = p_buffer->m_syndrome;
-  uint32_t* buffer = p_buffer->m_buffer;
-
-  for (i = 0; i < p_code->m_distance; i++) syndrome[i] = 0;
+  uint32_t* buffer = p_buffer->m_buffer_1;
 
   //2. constant : empirically chosen to equalize Chien search and FFT running times at threshold
-  float FFTThreshold = (float) 2. * getFactorSum(f);
+#ifndef USE_ADDITIVE_DFT_SYN
+  float FFT_threshold = (float) 2. * getFactorSum(f);
+#else
+  float l = logf((float) f->m);
+  float FFT_threshold = 1.f * f->m * l * l;
+#endif
   float cost =
       ((float) p_code->m_distance) *
       ((float) p_code->m_gen_poly_degree) / ((float) p_code->m_length);
 #ifdef LOGGING
   printf("  Syndrome computation: must evaluate polynomial of degree %d at %d points; "
          "cost: %.0f; FFT threshold: %.0f\n", p_code->m_gen_poly_degree,
-         p_code->m_distance, (double) cost, (double) FFTThreshold);
+         p_code->m_distance, (double) cost, (double) FFT_threshold);
 #endif
 
-  int use_fft = (cost > FFTThreshold);
+  int use_fft = cost > FFT_threshold;
   int pre_reduce_syndrome = !use_fft;
 
   uint32_t max_idx = 0;
@@ -256,7 +260,7 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer* p_buffer, unsigned l
   {
     // reduce codeword by syndrome polynomial first
     memcpy(buffer, p_packed_syndrome, degree_to_packed_size(p_code->m_length - 1) * sUL);
-    bch_reduce_syndrome(p_code, (unsigned long*) p_buffer->m_buffer);
+    bch_reduce_syndrome(p_code, (unsigned long*) p_buffer->m_buffer_1);
     max_idx = p_code->m_gen_poly_degree;
     source_buffer = (unsigned long*) buffer;
   }
@@ -271,41 +275,41 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer* p_buffer, unsigned l
 #ifdef LOGGING
     printf("  Using FFT to evaluate syndrome polynomial\n");
 #endif
+    printf("max_idx before reduction: %d\n", max_idx);
     for (i = 0; i < max_idx; i++) syndrome[i] = get_bit(source_buffer, i);
-    // we can have order > max_idx or order <= max_idx
-    if(max_idx > order)
+    for (     ; i < f->n;    i++) syndrome[i] = 0;
+
+#ifndef USE_ADDITIVE_DFT_SYN
+    if(max_idx == f->n)
     {
-      //FFT only takes into account terms of degree 0 ... order - 1: fold higher-degree terms
-      uint32_t i_mod_order = 0;
-      for (i = order; i < max_idx; i++)
-      {
-        syndrome[i_mod_order] ^= syndrome[i];
-        i_mod_order++;
-        if(i_mod_order == order) i_mod_order = 0;
-      }
+      //multiplicative FFT only takes into account terms of degree 0 ... order - 1: fold term of degree 'order'
+      syndrome[0] ^= syndrome[order];
+      syndrome[order] = 0;
       max_idx = order;
     }
-    else
-    {
-      for (i = max_idx; i < order; i++) syndrome[i] = 0;
-    }
+    printf("max_idx: %d\n", max_idx);
     evaluate_polynomial_multiplicative_FFT(f, syndrome, syndrome, max_idx, buffer);
+#else
+    evaluate_polynomial_additive_FFT(f, syndrome, buffer, max_idx);
+    for(i = 0; i < f->n; i++) syndrome[i] = buffer[i];
+#endif
   }
   else
   {
 #ifdef LOGGING
     printf("  Using Chien search to evaluate syndrome polynomial\n");
 #endif
+    for (i = 0; i < p_code->m_distance; i++) syndrome[i] = 0;
     for (j = 0; j < max_idx; j++)
     {
       if (get_bit(source_buffer, j))
       {
-        uint32_t idx = 0;
+        uint32_t ij = 0;
         for (i = 0; i < p_code->m_distance; i++)
         {
-          syndrome[i] ^= exp[idx];
-          idx += j;
-          if (idx >= order) idx -= order;
+          syndrome[i] ^= exp[ij];
+          ij += j;
+          if (ij >= order) ij -= order;
         }
       }
     }
@@ -322,14 +326,14 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffer* p_buffer, unsigned l
   return syn_error;
 }
 
-uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
+uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffers* p_buffer)
 {
   TfiniteField* f = &p_code->m_field;
   const uint32_t order = f->n - 1;
   uint32_t* syndrome = p_buffer->m_syndrome;
   uint32_t* A = p_buffer->m_A;
   uint32_t* B = p_buffer->m_B;
-  uint32_t* C = p_buffer->m_elp;
+  uint32_t* C = p_buffer->m_C_elp;
 
   uint32_t Adegree = 0, Cdegree = 0, Bdegree = 0;
   B[0] = 1;
@@ -343,10 +347,11 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
     // calculate discrepancy d_{i+1}
     uint32_t d = syndrome[i + 1];
     for (j = 1; j < Cdegree + 1; j++) d ^= multiply(f, C[j], syndrome[i + 1 - j]);
-    if (d == 0) m = m + 1; // anihilation continues
+    if (d == 0) m = m + 1; // annihilation continues
     else
     {
       // A(x) = C(x) - (d / b) x**m . B(x)
+      // compute log of leading term of B(x)
       uint32_t d_log = f->log[d];
       uint32_t mult_log = d_log + inv_b_log;
       if(mult_log >= order) mult_log -= order;
@@ -374,7 +379,7 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
       if(2 * L <= i)
       {
         //swap B and C
-        // (we are only interested in B = C)
+        // (we are only interested in B = C, but need to track other pointers for buffer reuse)
         L = i + 1 - L;
         Bdegree = Cdegree;
         swap = B; B = C; C = swap;
@@ -386,33 +391,29 @@ uint32_t bch_compute_elp(TbchCode* p_code, TbchCodeBuffer* p_buffer)
         m = m + 1;
       }
       //swap A and C
-      // (we are only interested in C = A)
+      // (we are only interested in C = A, but need to track other pointers for buffer reuse)
       swap = C; C = A; A = swap;
       Cdegree = Adegree;
     }
   }
-  // ELP is in C, which may be p_buffer->m_A, p_buffer->m_B or p_buffer->m_elp
-  // put it in p_buffer->m_elp
-  if(C != p_buffer->m_elp)
-  {
-    for(uint32_t i = 0; i < L + 1; i++)
-    {
-      p_buffer->m_elp[i] = C[i];
-    }
-  }
+  // swap buffers in order to ensure that the ELP is in p_buffer->m_elp
+  // this is possible since all buffers have the same size
+  p_buffer->m_C_elp = C;
+  p_buffer->m_A = A;
+  p_buffer->m_B = B;
   return L;
 }
 
-uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t p_elp_degree)
+uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffers* p_buffer, uint32_t p_elp_degree)
 {
   TfiniteField* f = &p_code->m_field;
   uint32_t order = f->n - 1;
   const uint32_t* log_t = f->log;
   const uint32_t* exp_t = f->exp;
   uint32_t* syndrome = p_buffer->m_syndrome;
-  uint32_t* result_buffer = p_buffer->m_A;
-  uint32_t* aux_buffer = p_buffer->m_buffer;
-  uint32_t* elp = p_buffer->m_elp;
+  uint32_t* result_buffer = p_buffer->m_buffer_1;
+  uint32_t* aux_buffer = p_buffer->m_buffer_2;
+  uint32_t* elp = p_buffer->m_C_elp;
 
   //check if the degree of the elp is big enough to use the fft
 #ifdef LOGGING
@@ -426,7 +427,8 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffer* p_buffer, uint32_t 
 #ifndef USE_ADDITIVE_DFT
   float FFT_threshold = 0.8f * (float) (getFactorSum(f));
 #else
-  float FFT_threshold = 3.5f * f->m * log((float) f->m);
+  float l = logf((float) f->m);
+  float FFT_threshold = 0.5f * f->m * l * l;
 #endif
 #ifdef LOGGING
   printf("  Error location: has degree %d, FFT threshold: %.0f\n", p_elp_degree, (double) FFT_threshold);
@@ -506,11 +508,11 @@ int bch_encode(TbchCode *p_code, unsigned long* po_codeword, uint32_t* p_data, u
 }
 
 uint32_t bch_decode(TbchCode* p_code, unsigned long* pio_packed_data,
-    TbchCodeBuffer* p_buffer, uint32_t* po_corrected)
+    TbchCodeBuffers* p_buffer, uint32_t* po_corrected)
 {
   uint32_t num_errors_found = 0;
   uint32_t ok = 0;
-  TbchCodeBuffer buffer_struct;
+  TbchCodeBuffers buffer_struct;
 
   if (p_buffer) buffer_struct = *p_buffer;
   else          buffer_struct = bch_alloc_buffers(p_code);
@@ -561,28 +563,25 @@ uint32_t bch_decode(TbchCode* p_code, unsigned long* pio_packed_data,
   return ok;
 }
 
-TbchCodeBuffer bch_alloc_buffers(TbchCode* p_code)
+TbchCodeBuffers bch_alloc_buffers(TbchCode* p_code)
 {
-  TbchCodeBuffer buffer;
+  TbchCodeBuffers buffer;
 
   uint32_t byteSize = (p_code->m_distance + 1) * 4;
-  // m_distance + 1 <= m_field.n : temp can be used both for Berlekamp-Massey and in other
-  // places where a buffer of size n is needed
   buffer.m_syndrome = (uint32_t*) malloc(p_code->m_field.n * 4);
-  buffer.m_buffer = (uint32_t*) malloc(p_code->m_field.n * 4);
-  buffer.m_A = (uint32_t*) malloc(p_code->m_field.n * 4);
-  //buffer.m_A = (uint32_t*) malloc(byteSize);
+  buffer.m_buffer_1 = (uint32_t*) malloc(p_code->m_field.n * 4);
+  buffer.m_buffer_2 = (uint32_t*) malloc(p_code->m_field.n * 4);
+  buffer.m_A = (uint32_t*) malloc(byteSize);
   buffer.m_B = (uint32_t*) malloc(byteSize);
-  buffer.m_elp = (uint32_t*) malloc(byteSize);
-  //tracks the location of the ELP accross buffer swaps during Berlekamp-Massey
+  buffer.m_C_elp = (uint32_t*) malloc(byteSize);
   buffer.m_error = (uint32_t*) malloc(byteSize);
   return buffer;
 }
 
-void bch_free_buffers(TbchCodeBuffer* p_buffer)
+void bch_free_buffers(TbchCodeBuffers* p_buffer)
 {
-  free(p_buffer->m_elp);
-  p_buffer->m_elp = 0;
+  free(p_buffer->m_C_elp);
+  p_buffer->m_C_elp = 0;
   free(p_buffer->m_A);
   p_buffer->m_A = 0;
   free(p_buffer->m_B);
@@ -591,7 +590,9 @@ void bch_free_buffers(TbchCodeBuffer* p_buffer)
   p_buffer->m_syndrome = 0;
   free(p_buffer->m_error);
   p_buffer->m_error = 0;
-  free(p_buffer->m_buffer);
-  p_buffer->m_buffer = 0;
+  free(p_buffer->m_buffer_2);
+  p_buffer->m_buffer_2 = 0;
+  free(p_buffer->m_buffer_1);
+  p_buffer->m_buffer_1 = 0;
 }
 
