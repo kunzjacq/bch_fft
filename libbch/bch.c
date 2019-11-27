@@ -239,8 +239,7 @@ int32_t bch_eval_syndrome(TbchCode* p_code, TbchCodeBuffers* p_buffer, unsigned 
 #ifndef USE_ADDITIVE_DFT_SYN
   float FFT_threshold = (float) 2. * getFactorSum(f);
 #else
-  float l = logf((float) f->m);
-  float FFT_threshold = 1.f * f->m * l * l;
+  float FFT_threshold = 0.5f * f->m * f->m;
 #endif
   float cost =
       ((float) p_code->m_distance) *
@@ -427,8 +426,7 @@ uint32_t bch_locate_errors(TbchCode* p_code, TbchCodeBuffers* p_buffer, uint32_t
 #ifndef USE_ADDITIVE_DFT
   float FFT_threshold = 0.8f * (float) (getFactorSum(f));
 #else
-  float l = logf((float) f->m);
-  float FFT_threshold = 0.5f * f->m * l * l;
+  float FFT_threshold = 0.25f * f->m * f->m;
 #endif
 #ifdef LOGGING
   printf("  Error location: has degree %d, FFT threshold: %.0f\n", p_elp_degree, (double) FFT_threshold);
